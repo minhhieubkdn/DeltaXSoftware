@@ -12,7 +12,7 @@ import android.util.Log;
 import android.view.*;
 import android.widget.ImageView;
 
-public class PositionFrag extends Fragment{
+public class PositionFrag extends Fragment implements HandleDataChangeInterface{
 
     public int local_x;
     public int local_y;
@@ -30,6 +30,11 @@ public class PositionFrag extends Fragment{
 
     public static PositionFrag newInstance() {
         return new PositionFrag();
+    }
+
+    @Override
+    public void handleDataChange(int x, int y) {
+
     }
 
     @Override
@@ -152,8 +157,6 @@ public class PositionFrag extends Fragment{
                         int y_pos = (int)(event.getRawY() + dY);
                         onPositionDataPass.handlePositionChange(x_pos, y_pos);
                         break;
-                    case MotionEvent.ACTION_POINTER_UP:
-                        break;
 
                     default:
                         return false;
@@ -162,16 +165,19 @@ public class PositionFrag extends Fragment{
             }
         });
 
+        ((MainActivity)getActivity()).setHandleDataChangeInterface(new HandleDataChangeInterface() {
+            @Override
+            public void handleDataChange(int x, int y) {
+                x_cord = x;
+                y_cord = y;
+                imageView.setX((float)x);
+                imageView.setY((float)y);
+            }
+        });
+
         return view;
     }
 
-    public void setImageViewPosition(int x, int y)
-    {
-        x_cord = x;
-        y_cord = y;
 
-        imageView.setX((float)x_cord);
-        imageView.setY((float)y_cord);
-    }
 
 }

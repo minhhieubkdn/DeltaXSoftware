@@ -1,5 +1,6 @@
 package cc.imwi.deltaxsoftware;
 
+import android.app.Activity;
 import android.content.Context;
 import android.inputmethodservice.Keyboard;
 import android.support.v4.app.Fragment;
@@ -18,10 +19,10 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
     final static String IMG_TAG =  "IMG_TAG";
     final static int MAX_PROGRESS_SEEK_BAR = 100;
 
-    public int CurrentX;
-    public int CurrentY;
-    public int CurrentZ;
-    public int CurrentW;
+    public int CurrentX = 0;
+    public int CurrentY = 0;
+    public int CurrentZ = 0;
+    public int CurrentW = 0;
 
     TextView tvConnectionStatus;
     Spinner spinnerBaudrate;
@@ -48,7 +49,7 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
     Integer[] Baudrates = {9600, 115200};
     int baudrate = 9600;
 
-    //HandleDataChangeInterface handleDataChangeInterface;
+    HandleDataChangeInterface handleDataChangeInterface;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -154,19 +155,62 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
             }
         });
 
-        etXPos.setOnKeyListener(new View.OnKeyListener() {
+        etXPos.setOnFocusChangeListener(new View.OnFocusChangeListener() {
             @Override
-            public boolean onKey(View v, int keyCode, KeyEvent event) {
-                if (keyCode == Keyboard.KEYCODE_DONE)
+            public void onFocusChange(View v, boolean hasFocus) {
+                if(!hasFocus)
                 {
-
-                    InputMethodManager imm =  (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-                    imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
-                    return true;
+                    if(v.getId() == R.id.et_x_pos)
+                    {
+                        CurrentX = Integer.parseInt(etXPos.getText().toString());
+                        updateFragment(CurrentX,CurrentY);
+                    }
+                    hideKeyboard(v);
                 }
+            }
+        });
 
-                Toast.makeText(getApplicationContext(), event.getCharacters(), Toast.LENGTH_SHORT).show();
-                return false;
+        etYPos.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                if(!hasFocus)
+                {
+                    if(v.getId() == R.id.et_y_pos)
+                    {
+                        CurrentY = Integer.parseInt(etYPos.getText().toString());
+                        updateFragment(CurrentX, CurrentY);
+                    }
+                    hideKeyboard(v);
+                }
+            }
+        });
+
+        etWPos.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                if(!hasFocus)
+                {
+                    if(v.getId() == R.id.et_w_pos)
+                    {
+                        CurrentW = Integer.parseInt(etWPos.getText().toString());
+                    }
+                    hideKeyboard(v);
+                }
+            }
+        });
+
+        etZPos.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                if(!hasFocus)
+                {
+                    if(v.getId() == R.id.et_z_pos)
+                    {
+                        CurrentZ = Integer.parseInt(etZPos.getText().toString());
+                        sbZPosition.setProgress(CurrentZ);
+                    }
+                    hideKeyboard(v);
+                }
             }
         });
     }
@@ -193,18 +237,22 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
 
     public void updateZPos()
     {
-        //Toast.makeText(getApplicationContext(), "Current Z: " + CurrentZ, Toast.LENGTH_SHORT).show();
         etZPos.setText(Integer.toString(CurrentZ));
     }
 
     void updateFragment(int x, int y)
     {
-        positionFrag = new PositionFrag();
-        //handleDataChangeInterface = (HandleDataChangeInterface)getApplication();
-        //handleDataChangeInterface.handleDataChange(CurrentX, CurrentY);
-        getSupportFragmentManager().beginTransaction().add(R.id.fragment_container, positionFrag).commit();
+        handleDataChangeInterface.handleDataChange(x,y);
     }
 
+    public void setHandleDataChangeInterface(HandleDataChangeInterface handleDataChangeInterface) {
+        this.handleDataChangeInterface = handleDataChangeInterface;
+    }
 
+    void hideKeyboard(View view)
+    {
+        InputMethodManager imm = (InputMethodManager)getSystemService(Activity.INPUT_METHOD_SERVICE);
+        imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
+    }
 }
 
