@@ -39,7 +39,7 @@
         android:layout_marginStart="8dp"
         android:layout_marginTop="8dp"
         android:layout_marginEnd="8dp"
-        android:text="G28\nG01 X20 Y47 Z-300.67"
+        android:scrollbars="vertical"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/spinner_baudrate" />
@@ -317,7 +317,6 @@
         android:inputType="textMultiLine"
         android:maxLines="10"
         android:scrollbars="horizontal"
-        android:text="N0 G28\nN5 M03 S2000\nN10 M204 A3600\n\nN20 G01 Z-400"
         android:textAlignment="textStart"
         android:textAppearance="@style/TextAppearance.AppCompat"
         app:layout_constraintBottom_toBottomOf="parent"
