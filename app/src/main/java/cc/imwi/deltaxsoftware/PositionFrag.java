@@ -14,12 +14,20 @@ import android.widget.ImageView;
 
 public class PositionFrag extends Fragment implements HandleDataChangeInterface{
 
-    public int local_x;
-    public int local_y;
+    final static int HALF_IMAGE_WIDTH = 40;
+    final static  int HALF_IMAGE_HEIGHT = 40;
+
+    final static int HALF_MAX_WIDTH = 220;
+    final static int HALF_MAX_HEIGHT = 220;
+
+    public int local_x = 0;
+    public int local_y = 0;
     float dX;
     float dY;
     int x_cord;
     int y_cord;
+    int CurrentX = 0;
+    int CurrentY = 0;
     int lastAction;
     String msg = "TAG";
 
@@ -96,8 +104,8 @@ public class PositionFrag extends Fragment implements HandleDataChangeInterface{
                         break;
 
                     case DragEvent.ACTION_DRAG_LOCATION:
-                        x_cord = (int) event.getX() - v.getWidth()/2;
-                        y_cord = (int) event.getY() - v.getHeight()/2;
+                        x_cord = (int) event.getX() - HALF_IMAGE_WIDTH;
+                        y_cord = (int) event.getY() - HALF_IMAGE_HEIGHT;
                         constraintLayoutParams.leftMargin = (int) v.getX() + (x_cord);
                         constraintLayoutParams.topMargin = (int) v.getY() + (y_cord);
                         v.setLayoutParams(constraintLayoutParams);
@@ -107,22 +115,10 @@ public class PositionFrag extends Fragment implements HandleDataChangeInterface{
                         break;
 
                     case DragEvent.ACTION_DROP:
-//                        x_cord = (int)event.getX();
-//                        y_cord = (int)event.getY();
-//
-//                        View view = (View) event.getLocalState();
-//                        ViewGroup owner = (ViewGroup) view.getParent();
-//                        owner.removeView(view); //remove the dragged view
-//                        local_x = x_cord - (int)((float)view.getWidth()/2);
-//                        local_y = y_cord - (int)((float)view.getHeight()/2);
-//                        view.setX(local_x);
-//                        view.setY(local_y);
-//                        LinearLayout container = (LinearLayout) v;
-//                        container.addView(view);
                         x_cord = (int)event.getX();
                         y_cord = (int)event.getY();
-                        local_x = x_cord - (int)((float)v.getWidth()/2);
-                        local_y = y_cord - (int)((float)v.getHeight()/2);
+                        local_x = x_cord - HALF_IMAGE_WIDTH;
+                        local_y = y_cord - HALF_IMAGE_HEIGHT;
                         v.setX(local_x);
                         v.setY(local_y);
                         Log.i(msg, "Action is DragEvent.ACTION_DROP" + local_x + "-" + local_y);
@@ -149,13 +145,15 @@ public class PositionFrag extends Fragment implements HandleDataChangeInterface{
                         view.setY(event.getRawY() + dY);
                         view.setX(event.getRawX() + dX);
                         lastAction = MotionEvent.ACTION_MOVE;
-                        //Toast.makeText(getContext(), "ACTION_MOVE!", Toast.LENGTH_SHORT).show();
                         break;
 
                     case MotionEvent.ACTION_UP:
                         int x_pos = (int)(event.getRawX() + dX);
                         int y_pos = (int)(event.getRawY() + dY);
-                        onPositionDataPass.handlePositionChange(x_pos, y_pos);
+                        int _currentX = x_pos + HALF_IMAGE_WIDTH;
+                        int _currentY = y_pos + HALF_IMAGE_HEIGHT;
+                        ConvertToDeltaCoordinates(_currentX, _currentY);
+                        onPositionDataPass.handlePositionChange(CurrentX, CurrentY);
                         break;
 
                     default:
@@ -168,16 +166,36 @@ public class PositionFrag extends Fragment implements HandleDataChangeInterface{
         ((MainActivity)getActivity()).setHandleDataChangeInterface(new HandleDataChangeInterface() {
             @Override
             public void handleDataChange(int x, int y) {
-                x_cord = x;
-                y_cord = y;
-                imageView.setX((float)x);
-                imageView.setY((float)y);
+                ConvertToFragmentCoordinates(x,y);
+                x_cord = local_x;
+                y_cord = local_y;
+                imageView.setX((float)x_cord);
+                imageView.setY((float)y_cord);
             }
         });
 
         return view;
     }
 
+    @Override
+    public void onStart() {
+        super.onStart();
+        InitData();
+    }
 
+    void InitData(){
+        onPositionDataPass.handlePositionChange(this.CurrentX, this.CurrentY);
+    }
+
+    void ConvertToFragmentCoordinates(int _x, int _y)
+    {
+        local_x = HALF_MAX_WIDTH + _x;
+        local_y = HALF_MAX_HEIGHT - _y;
+    }
+
+    void ConvertToDeltaCoordinates(int _x, int _y){
+        CurrentX = _x - HALF_MAX_WIDTH;
+        CurrentY = HALF_MAX_HEIGHT - _y;
+    }
 
 }
