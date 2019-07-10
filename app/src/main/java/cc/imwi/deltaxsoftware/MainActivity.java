@@ -1,18 +1,17 @@
 package cc.imwi.deltaxsoftware;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.*;
-import android.inputmethodservice.Keyboard;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
-import android.text.Editable;
-import android.text.TextWatcher;
 import android.text.method.ScrollingMovementMethod;
-import android.view.KeyEvent;
+import android.view.GestureDetector;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.*;
@@ -20,9 +19,9 @@ import android.widget.*;
 import java.lang.ref.WeakReference;
 import java.util.Set;
 
-public class MainActivity extends FragmentActivity implements OnPositionDataPass{
+public class MainActivity extends FragmentActivity implements OnPositionDataPass {
 
-    final static String IMG_TAG =  "IMG_TAG";
+    final static String IMG_TAG = "IMG_TAG";
     final static int MAX_PROGRESS_SEEK_BAR = 100;
 
     public int CurrentX = 0;
@@ -31,7 +30,6 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
     public int CurrentW = 0;
 
     TextView tvConnectionStatus;
-    Spinner spinnerBaudrate;
     TextView tvTerminal;
     EditText etInputGcode;
     Button btSendData;
@@ -40,6 +38,13 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
     EditText etYPos;
     EditText etZPos;
     EditText etWPos;
+    EditText etFeedrate;
+
+    TextView tvX;
+    TextView tvY;
+    TextView tvZ;
+    TextView tvW;
+    TextView tvFeedrate;
 
     VerticalSeekBar sbZPosition;
     PositionFrag positionFrag;
@@ -50,14 +55,28 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
     Switch swLoop;
 
     EditText etGcode;
+    Spinner spinnerGcode;
+    ImageButton btPlay;
 
     HandleDataChangeInterface handleDataChangeInterface;
 
-    ArrayAdapter<Integer> baudrateAdapter;
-    Integer[] Baudrates = {9600, 115200};
-    int baudrate = 9600;
+    int Feedrate = 0;
+
+    ArrayAdapter<String> gcodeCommandAdapter;
+    String[] CommandArray = {"G01", "G02", "G03", "G28", "M03", "M04", "M05", "M204"};
+    String CurrentCommand = "G01";
+    String LastCommand = "G01";
+
+    int IndexOfEnter = 0;
+    int OldIndexOfEnter = 0;
+    int LastIndexOfEnter = 0;
+    String rawCode;
+    String finalGcode;
 
     String Gcode = "";
+    boolean isPlaying = false;
+    boolean isEnableEditTextChangeListener = true;
+    public boolean loop = false;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -81,7 +100,7 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
 
     @Override
     public void handlePositionChange(int x, int y) {
-        setCurrentXYPosition(x,y);
+        setCurrentXYPosition(x, y);
     }
 
     @Override
@@ -89,18 +108,23 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
         super.onAttachFragment(fragment);
     }
 
-    void InitWidget()
-    {
+    void InitWidget() {
         tvConnectionStatus = (TextView) findViewById(R.id.tv_connection_status);
-        spinnerBaudrate = (Spinner) findViewById(R.id.spinner_baudrate);
         tvTerminal = (TextView) findViewById(R.id.tv_terminate);
-        etInputGcode = (EditText)findViewById(R.id.et_input_gcode);
+        etInputGcode = (EditText) findViewById(R.id.et_input_gcode);
         btSendData = (Button) findViewById(R.id.bt_send_data);
 
         etXPos = (EditText) findViewById(R.id.et_x_pos);
         etYPos = (EditText) findViewById(R.id.et_y_pos);
         etZPos = (EditText) findViewById(R.id.et_z_pos);
         etWPos = (EditText) findViewById(R.id.et_w_pos);
+        etFeedrate = (EditText) findViewById(R.id.et_feedrate);
+
+        tvX = findViewById(R.id.tv_x_pos);
+        tvY = findViewById(R.id.tv_y_pos);
+        tvZ = findViewById(R.id.tv_z_pos);
+        tvW = findViewById(R.id.tv_w_pos);
+        tvFeedrate = findViewById(R.id.tv_feedrate);
 
         sbZPosition = (VerticalSeekBar) findViewById(R.id.sb_z_pos);
 
@@ -110,6 +134,8 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
         swLoop = (Switch) findViewById(R.id.sw_loop);
 
         etGcode = (EditText) findViewById(R.id.et_gcode);
+        spinnerGcode = (Spinner) findViewById(R.id.spinner_gcode);
+        btPlay = (ImageButton) findViewById(R.id.img_bt_play);
 
         if (findViewById(R.id.fragment_container) != null) {
             positionFrag = new PositionFrag();
@@ -119,21 +145,50 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
         }
     }
 
-    void InitActionFromWidget()
-    {
+    @SuppressLint("ClickableViewAccessibility")
+    void InitActionFromWidget() {
+
         tvTerminal.setMovementMethod(new ScrollingMovementMethod());
-        spinnerBaudrate.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+
+        spinnerGcode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                if (position == 0)
-                {
-                    baudrate = 9600;
-                    SerialReconnect(baudrate);
-                }
-                if(position == 1)
-                {
-                    baudrate = 115200;
-                    SerialReconnect(baudrate);
+                LastCommand = CurrentCommand;
+                CurrentCommand = CommandArray[position];
+                ((TextView) parent.getChildAt(0)).setTextSize(14);
+                switch (CurrentCommand) {
+                    case "G01":
+                        G01(true);
+                        isEnableEditTextChangeListener = true;
+                        break;
+                    case "G02":
+                        G02(true);
+                        isEnableEditTextChangeListener = false;
+                        break;
+                    case "G03":
+                        G03(true);
+                        isEnableEditTextChangeListener = false;
+                        break;
+                    case "G28":
+                        G28(true);
+                        isEnableEditTextChangeListener = false;
+                        break;
+                    case "M03":
+                        M03(true);
+                        isEnableEditTextChangeListener = false;
+                        break;
+                    case "M04":
+                        M04(true);
+                        isEnableEditTextChangeListener = false;
+                        break;
+                    case "M05":
+                        M05(true);
+                        isEnableEditTextChangeListener = false;
+                        break;
+                    case "M204":
+                        M204(true);
+                        isEnableEditTextChangeListener = false;
+                        break;
                 }
             }
 
@@ -147,8 +202,7 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
         sbZPosition.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                CurrentZ = sbZPosition.progress;
-                //Toast.makeText(getApplicationContext(), "seek bar progress:" + progress,Toast.LENGTH_SHORT).show();
+                CurrentZ = -229 - progress;
             }
 
             @Override
@@ -162,22 +216,40 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
             }
         });
 
+        sbZPosition.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                if (event.getAction() == MotionEvent.ACTION_UP) {
+                    Gcode = "G01 Z" + CurrentZ + "\n";
+                    SendGcode(Gcode);
+                    if (!CurrentCommand.equals("G01")) {
+                        G01(true);
+                        spinnerGcode.setSelection(0, true);
+                    }
+                    return true;
+                }
+                return false;
+            }
+        });
+
+        swLoop.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                loop = isChecked;
+            }
+        });
+
         etXPos.setOnFocusChangeListener(new View.OnFocusChangeListener() {
             @Override
             public void onFocusChange(View v, boolean hasFocus) {
-                if(!hasFocus)
-                {
-                    if(v.getId() == R.id.et_x_pos)
-                    {
-                        CurrentX = Integer.parseInt(etXPos.getText().toString());
-                        updateFragment(CurrentX,CurrentY);
-                        Gcode = "G01 X" + Integer.toString(CurrentX) + "\n";
-                        //if(Gcode.charAt(Gcode.length() - 1) == )
-                        if(usbService != null)
-                        {
-                            usbService.write(Gcode.getBytes());
+                if (!hasFocus) {
+                    if (v.getId() == R.id.et_x_pos) {
+                        if (isEnableEditTextChangeListener) {
+                            CurrentX = Integer.parseInt(etXPos.getText().toString());
+                            updateFragment(CurrentX, CurrentY);
+                            Gcode = "G01 X" + Integer.toString(CurrentX) + "\n";
+                            SendGcode(Gcode);
                         }
-                        tvTerminal.append(Gcode);
 
                     }
                     hideKeyboard(v);
@@ -188,26 +260,14 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
         etYPos.setOnFocusChangeListener(new View.OnFocusChangeListener() {
             @Override
             public void onFocusChange(View v, boolean hasFocus) {
-                if(!hasFocus)
-                {
-                    if(v.getId() == R.id.et_y_pos)
-                    {
-                        CurrentY = Integer.parseInt(etYPos.getText().toString());
-                        updateFragment(CurrentX, CurrentY);
-                    }
-                    hideKeyboard(v);
-                }
-            }
-        });
-
-        etWPos.setOnFocusChangeListener(new View.OnFocusChangeListener() {
-            @Override
-            public void onFocusChange(View v, boolean hasFocus) {
-                if(!hasFocus)
-                {
-                    if(v.getId() == R.id.et_w_pos)
-                    {
-                        CurrentW = Integer.parseInt(etWPos.getText().toString());
+                if (!hasFocus) {
+                    if (v.getId() == R.id.et_y_pos) {
+                        if (isEnableEditTextChangeListener) {
+                            CurrentY = Integer.parseInt(etYPos.getText().toString());
+                            updateFragment(CurrentX, CurrentY);
+                            Gcode = "G01 Y" + Integer.toString(CurrentY) + "\n";
+                            SendGcode(Gcode);
+                        }
                     }
                     hideKeyboard(v);
                 }
@@ -217,97 +277,223 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
         etZPos.setOnFocusChangeListener(new View.OnFocusChangeListener() {
             @Override
             public void onFocusChange(View v, boolean hasFocus) {
-                if(!hasFocus)
-                {
-                    if(v.getId() == R.id.et_z_pos)
-                    {
-                        CurrentZ = Integer.parseInt(etZPos.getText().toString());
-                        sbZPosition.setProgress(CurrentZ);
+                if (!hasFocus) {
+                    if (v.getId() == R.id.et_z_pos) {
+                        if (isEnableEditTextChangeListener) {
+                            CurrentZ = Integer.parseInt(etZPos.getText().toString());
+                            sbZPosition.setProgress(-229 - CurrentZ);
 
-                        if(usbService != null)
-                        {
-                            int z = -229 - CurrentZ;
-                            Gcode = "G01 Z" + z + "\n";
-                            usbService.write(Gcode.getBytes());
+                            if (usbService != null) {
+                                //int z = -229 - CurrentZ;
+                                Gcode = "G01 Z" + CurrentZ + "\n";
+                                SendGcode(Gcode);
+                            }
                         }
                     }
                     hideKeyboard(v);
                 }
             }
         });
+
+        etWPos.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                if (!hasFocus) {
+                    if (v.getId() == R.id.et_w_pos) {
+                        if (isEnableEditTextChangeListener) {
+                            CurrentW = Integer.parseInt(etWPos.getText().toString());
+                            Gcode = "G01 W" + CurrentW + "\n";
+                            SendGcode(Gcode);
+                        }
+                    }
+                    hideKeyboard(v);
+                }
+            }
+        });
+
+        etFeedrate.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                if (!hasFocus) {
+                    if (isEnableEditTextChangeListener) {
+                        Feedrate = Integer.parseInt(etFeedrate.getText().toString());
+                        Gcode = "G01 F" + Feedrate + "\n";
+                        SendGcode(Gcode);
+                    }
+                    hideKeyboard(v);
+                }
+            }
+        });
+
+        etInputGcode.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                if (!hasFocus) {
+                    if (v.getId() == R.id.et_input_gcode) {
+                        hideKeyboard(v);
+                    }
+                }
+            }
+        });
+
+        etGcode.setOnLongClickListener(new View.OnLongClickListener() {
+            @Override
+            public boolean onLongClick(View view) {
+                etGcode.setText("");
+                return true;
+            }
+        });
+
         btSendData.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 String text = etInputGcode.getText().toString() + "\n";
-                tvTerminal.append(text);
-                if(usbService != null)
-                {
-                    usbService.write(text.getBytes());
-                }
+                SendGcode(text);
             }
         });
+
         btHome.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                CurrentX = 0;
+                CurrentY = 0;
+                CurrentZ = -229;
+
+                updateFragment(0, 0);
+                etXPos.setText("0");
+                etYPos.setText("0");
+                etZPos.setText("-229");
+                sbZPosition.setProgress(0);
+
                 String home = "G28\n";
-                tvTerminal.append(home);
-                if(usbService != null)
-                {
-                    usbService.write(home.getBytes());
-                }
+                SendGcode(home);
             }
         });
+
         btGo.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                Gcode = "G01 X" + CurrentX + " Y" + CurrentY + "\n";
-                tvTerminal.append(Gcode);
-                if(usbService != null)
-                {
-                    usbService.write(Gcode.getBytes());
+                Gcode = "G01 X" + CurrentX + " Y" + CurrentY + " Z" + CurrentZ + "\n";
+                SendGcode(Gcode);
+            }
+        });
+
+        btAdd.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                switch (CurrentCommand) {
+                    case "G01":
+                        G01(false);
+                        etGcode.append(Gcode);
+                        break;
+                    case "G02":
+                        G02(false);
+                        etGcode.append(Gcode);
+                        break;
+                    case "G03":
+                        G03(false);
+                        etGcode.append(Gcode);
+                        break;
+                    case "G28":
+                        G28(false);
+                        etGcode.append(Gcode);
+                        break;
+                    case "M03":
+                        M03(false);
+                        etGcode.append(Gcode);
+                        break;
+                    case "M04":
+                        M04(false);
+                        etGcode.append(Gcode);
+                        break;
+                    case "M05":
+                        M05(false);
+                        etGcode.append(Gcode);
+                        break;
+                    case "M204":
+                        M204(false);
+                        etGcode.append(Gcode);
+                        break;
+                }
+            }
+        });
+
+        btPlay.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+
+                if (!isPlaying) {
+                    isPlaying = true;
+                    btPlay.setImageResource(android.R.drawable.ic_media_pause);
+                    OldIndexOfEnter = 0;
+                    LastIndexOfEnter = 0;
+                    rawCode = etGcode.getText().toString();
+                    IndexOfEnter = rawCode.indexOf('\n');
+                    LastIndexOfEnter = rawCode.lastIndexOf('\n');
+                    sendGcodeLine(rawCode);
+                } else {
+                    isPlaying = false;
+                    btPlay.setImageResource(android.R.drawable.ic_media_play);
                 }
             }
         });
     }
 
-    void InitData()
-    {
-        baudrateAdapter = new ArrayAdapter<Integer>(this, android.R.layout.simple_spinner_dropdown_item, Baudrates);
-        spinnerBaudrate.setAdapter(baudrateAdapter);
+    void InitData() {
+        gcodeCommandAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, CommandArray);
+        spinnerGcode.setAdapter(gcodeCommandAdapter);
+        CurrentCommand = "G01";
         mHandler = new MyHandler(this);
+
     }
 
-    public void setCurrentXYPosition(int x, int y)
-    {
+    public void setCurrentXYPosition(int x, int y) {
+
         CurrentX = x;
         CurrentY = y;
 
         etXPos.setText(Integer.toString(CurrentX));
         etYPos.setText(Integer.toString(CurrentY));
+
+        Gcode = "G01 X" + CurrentX + " Y" + CurrentY + "\n";
+        SendGcode(Gcode);
+
+        if (!CurrentCommand.equals("G01")) {
+            G01(true);
+            spinnerGcode.setSelection(0, true);
+        }
+
     }
 
-    void SerialReconnect(int baudrate)
-    {
-
-    }
-
-    public void updateZPos()
-    {
+    public void updateZPos() {
         etZPos.setText(Integer.toString(CurrentZ));
     }
 
-    void updateFragment(int x, int y)
-    {
-        handleDataChangeInterface.handleDataChange(x,y);
+    void updateFragment(int x, int y) {
+        handleDataChangeInterface.handleDataChange(x, y);
+    }
+
+    void SendGcode(String gcode) {
+        if (usbService != null) {
+            if (gcode.endsWith("\n")) {
+                usbService.write(gcode.getBytes());
+                tvTerminal.append(gcode);
+            } else {
+                usbService.write((gcode + "\n").getBytes());
+                tvTerminal.append((gcode + "\n"));
+            }
+        } else {
+            tvTerminal.append("_");
+            tvTerminal.append(gcode);
+        }
     }
 
     public void setHandleDataChangeInterface(HandleDataChangeInterface handleDataChangeInterface) {
         this.handleDataChangeInterface = handleDataChangeInterface;
     }
 
-    void hideKeyboard(View view)
-    {
-        InputMethodManager imm = (InputMethodManager)getSystemService(Activity.INPUT_METHOD_SERVICE);
+    void hideKeyboard(View view) {
+        InputMethodManager imm = (InputMethodManager) getSystemService(Activity.INPUT_METHOD_SERVICE);
         imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
     }
 
@@ -350,14 +536,15 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
 
     private UsbService usbService;
     private MyHandler mHandler;
+
     private final ServiceConnection usbConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName arg0, IBinder arg1) {
             usbService = ((UsbService.UsbBinder) arg1).getService();
             usbService.setHandler(mHandler);
-            if(usbService!=null)
-            {
-                tvConnectionStatus.setText("Connected");
+            if (usbService != null) {
+                String connected = "Connected";
+                tvConnectionStatus.setText(connected);
                 usbService.write("Position\n".getBytes());
             }
         }
@@ -365,7 +552,9 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
         @Override
         public void onServiceDisconnected(ComponentName arg0) {
             usbService = null;
-            tvConnectionStatus.setText("Disconnected");
+
+            String disconnect = "Disconnected";
+            tvConnectionStatus.setText(disconnect);
         }
     };
 
@@ -395,9 +584,6 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
         registerReceiver(mUsbReceiver, filter);
     }
 
-    /*
-     * This handler will be passed to UsbService. Data received from serial port is displayed through this handler
-     */
     private static class MyHandler extends Handler {
         private final WeakReference<MainActivity> mActivity;
 
@@ -409,16 +595,271 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
         public void handleMessage(Message msg) {
             switch (msg.what) {
                 case UsbService.MESSAGE_FROM_SERIAL_PORT:
-                    String data = (String) msg.obj;
-                    mActivity.get().tvTerminal.append(data);
+                    mActivity.get().handleSerialData(msg);
                     break;
                 case UsbService.CTS_CHANGE:
-                    Toast.makeText(mActivity.get(), "CTS_CHANGE",Toast.LENGTH_LONG).show();
+                    Toast.makeText(mActivity.get(), "CTS_CHANGE", Toast.LENGTH_LONG).show();
                     break;
                 case UsbService.DSR_CHANGE:
-                    Toast.makeText(mActivity.get(), "DSR_CHANGE",Toast.LENGTH_LONG).show();
+                    Toast.makeText(mActivity.get(), "DSR_CHANGE", Toast.LENGTH_LONG).show();
                     break;
             }
+        }
+    }
+
+    public void handleSerialData(Message _msg) {
+        String data = _msg.obj.toString();
+
+        tvTerminal.append(data);
+        if (data.indexOf('k') > 0) {
+            if (isPlaying) {
+                this.sendGcodeLine(rawCode);
+            }
+        }
+    }
+
+    public void sendGcodeLine(String rawCode) {
+        if (IndexOfEnter == LastIndexOfEnter) {
+            Gcode = rawCode.substring(OldIndexOfEnter, IndexOfEnter + 1);
+
+            SendGcode(Gcode);
+
+            if (loop) {
+                IndexOfEnter = rawCode.indexOf('\n', 0);
+                OldIndexOfEnter = 0;
+            } else {
+                isPlaying = false;
+                btPlay.setImageResource(android.R.drawable.ic_media_play);
+                OldIndexOfEnter = 0;
+            }
+            return;
+        }
+        Gcode = rawCode.substring(OldIndexOfEnter, IndexOfEnter + 1);
+        SendGcode(Gcode);
+        OldIndexOfEnter = IndexOfEnter + 1;
+        IndexOfEnter = rawCode.indexOf('\n', OldIndexOfEnter);
+
+    }
+
+    void isLoop(boolean l) {
+        if (l) {
+            IndexOfEnter = 0;
+            LastIndexOfEnter = 0;
+        } else {
+            isPlaying = false;
+            btPlay.setImageResource(android.R.drawable.ic_media_play);
+        }
+    }
+
+    void G01(boolean init) {
+        if (init) {
+            tvX.setText("X");
+            tvY.setText("Y");
+            tvZ.setText("Z");
+            tvW.setText("W");
+            tvFeedrate.setText("F");
+
+            etXPos.setText(Integer.toString(CurrentX));
+            etYPos.setText(Integer.toString(CurrentY));
+            etZPos.setText(Integer.toString(CurrentZ));
+            etWPos.setText(Integer.toString(CurrentW));
+            etFeedrate.setText(Integer.toString(Feedrate));
+
+        } else {
+            Gcode = "G01 X";
+            if (Feedrate != Integer.parseInt(etFeedrate.getText().toString())) {
+                Feedrate = Integer.parseInt(etFeedrate.getText().toString());
+                String appendText = CurrentX + " Y" + CurrentY + " Z" + CurrentZ + " F" + Feedrate + "\n";
+                Gcode += appendText;
+                SendGcode(Gcode);
+            } else {
+                String appendText = CurrentX + " Y" + CurrentY + " Z" + CurrentZ + "\n";
+                Gcode += appendText;
+                SendGcode(Gcode);
+            }
+        }
+    }
+
+    void G02(boolean init) {
+        if (init) {
+            tvX.setText("F");
+            tvY.setText("I");
+            tvZ.setText("J");
+            tvW.setText("X");
+            tvFeedrate.setText("Y");
+
+            etXPos.setText("");
+            etYPos.setText("");
+            etZPos.setText("");
+            etWPos.setText("");
+            etFeedrate.setText("");
+        } else {
+            Gcode = "G02";
+            if (!etXPos.getText().toString().equals("")) {
+                Gcode += " F";
+                Gcode += etXPos.getText().toString();
+            }
+            if (!etYPos.getText().toString().equals("")) {
+                Gcode += " I";
+                Gcode += etYPos.getText().toString();
+            }
+            if (!etZPos.getText().toString().equals("")) {
+                Gcode += " J";
+                Gcode += etZPos.getText().toString();
+            }
+            if (!etWPos.getText().toString().equals("")) {
+                Gcode += " X";
+                Gcode += etWPos.getText().toString();
+            }
+            if (!etFeedrate.getText().toString().equals("")) {
+                Gcode += " Y";
+                Gcode += etFeedrate.getText().toString();
+            }
+            Gcode += "\n";
+            SendGcode(Gcode);
+        }
+    }
+
+    void G03(boolean init) {
+        if (init) {
+            tvX.setText("F");
+            tvY.setText("I");
+            tvZ.setText("J");
+            tvW.setText("X");
+            tvFeedrate.setText("Y");
+
+            etXPos.setText("");
+            etYPos.setText("");
+            etZPos.setText("");
+            etWPos.setText("");
+            etFeedrate.setText("");
+        } else {
+            Gcode = "G03";
+            if (!etXPos.getText().toString().equals("")) {
+                Gcode += " F";
+                Gcode += etXPos.getText().toString();
+            }
+            if (!etYPos.getText().toString().equals("")) {
+                Gcode += " I";
+                Gcode += etYPos.getText().toString();
+            }
+            if (!etZPos.getText().toString().equals("")) {
+                Gcode += " J";
+                Gcode += etZPos.getText().toString();
+            }
+            if (!etWPos.getText().toString().equals("")) {
+                Gcode += " X";
+                Gcode += etWPos.getText().toString();
+            }
+            if (!etFeedrate.getText().toString().equals("")) {
+                Gcode += " Y";
+                Gcode += etFeedrate.getText().toString();
+            }
+            Gcode += "\n";
+            SendGcode(Gcode);
+        }
+    }
+
+    void G28(boolean init) {
+        if (init) {
+            tvX.setText("");
+            tvY.setText("");
+            tvZ.setText("");
+            tvW.setText("");
+            tvFeedrate.setText("");
+
+            etXPos.setText("");
+            etYPos.setText("");
+            etZPos.setText("");
+            etWPos.setText("");
+            etFeedrate.setText("");
+        } else {
+            Gcode = "G28\n";
+            SendGcode(Gcode);
+        }
+    }
+
+    void M03(boolean init) {
+        if (init) {
+            tvX.setText("S");
+            tvY.setText("");
+            tvZ.setText("");
+            tvW.setText("");
+            tvFeedrate.setText("");
+
+            etXPos.setText("");
+            etYPos.setText("");
+            etZPos.setText("");
+            etWPos.setText("");
+            etFeedrate.setText("");
+
+        } else {
+            Gcode = "M03 S";
+            Gcode += etXPos.getText().toString();
+            Gcode += "\n";
+            SendGcode(Gcode);
+        }
+    }
+
+    void M04(boolean init) {
+        if (init) {
+            tvX.setText("S");
+            tvY.setText("");
+            tvZ.setText("");
+            tvW.setText("");
+            tvFeedrate.setText("");
+
+            etXPos.setText("");
+            etYPos.setText("");
+            etZPos.setText("");
+            etWPos.setText("");
+            etFeedrate.setText("");
+
+        } else {
+            Gcode = "M04 S";
+            Gcode += etXPos.getText().toString();
+            Gcode += "\n";
+            SendGcode(Gcode);
+        }
+    }
+
+    void M05(boolean init) {
+        if (init) {
+            tvX.setText("");
+            tvY.setText("");
+            tvZ.setText("");
+            tvW.setText("");
+            tvFeedrate.setText("");
+
+            etXPos.setText("");
+            etYPos.setText("");
+            etZPos.setText("");
+            etWPos.setText("");
+            etFeedrate.setText("");
+        } else {
+            Gcode = "M05\n";
+            SendGcode(Gcode);
+        }
+    }
+
+    void M204(boolean init) {
+        if (init) {
+            tvX.setText("A");
+            tvY.setText("");
+            tvZ.setText("");
+            tvW.setText("");
+            tvFeedrate.setText("");
+
+            etXPos.setText("");
+            etYPos.setText("");
+            etZPos.setText("");
+            etWPos.setText("");
+            etFeedrate.setText("");
+        } else {
+            Gcode = "M204 A";
+            Gcode += etXPos.getText().toString();
+            Gcode += "\n";
+            SendGcode(Gcode);
         }
     }
 }
