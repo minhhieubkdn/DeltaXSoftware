@@ -6,15 +6,20 @@ import android.content.*;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
+import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
 import android.text.method.ScrollingMovementMethod;
+import android.util.Log;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.*;
+import app.akexorcist.bluetotohspp.library.BluetoothSPP;
+import app.akexorcist.bluetotohspp.library.BluetoothState;
+import app.akexorcist.bluetotohspp.library.DeviceList;
 
 import java.lang.ref.WeakReference;
 import java.util.Set;
@@ -28,6 +33,7 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
     public int CurrentY = 0;
     public int CurrentZ = 0;
     public int CurrentW = 0;
+    public int Feedrate = 0;
 
     TextView tvConnectionStatus;
     TextView tvTerminal;
@@ -57,37 +63,105 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
     EditText etGcode;
     Spinner spinnerGcode;
     ImageButton btPlay;
+    ToggleButton tbProtocolSwitch;
 
     HandleDataChangeInterface handleDataChangeInterface;
-
-    int Feedrate = 0;
+    UsbService usbService;
+    MyHandler mHandler;
+    BluetoothSPP bluetooth;
 
     ArrayAdapter<String> gcodeCommandAdapter;
     String[] CommandArray = {"G01", "G02", "G03", "G28", "M03", "M04", "M05", "M204"};
     String CurrentCommand = "G01";
     String LastCommand = "G01";
-
     int IndexOfEnter = 0;
     int OldIndexOfEnter = 0;
     int LastIndexOfEnter = 0;
     String rawCode;
-    String finalGcode;
-
     String Gcode = "";
     boolean isPlaying = false;
     boolean isEnableEditTextChangeListener = true;
-    public boolean loop = false;
+    boolean loop = false;
+
+    boolean isEnableBluetooth = false;
+
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
+        initBluetooth();
         InitWidget();
         InitActionFromWidget();
         InitData();
     }
 
+    void initBluetooth() {
+
+        bluetooth = new BluetoothSPP(this);
+
+        bluetooth.setAutoConnectionListener(new BluetoothSPP.AutoConnectionListener() {
+            @Override
+            public void onAutoConnectionStarted() {
+                Log.i("Check", "Auto menu_connection started");
+            }
+
+            @Override
+            public void onNewConnection(String name, String address) {
+                Log.i("Check", "New Connection - " + name + " - " + address);
+            }
+        });
+        bluetooth.setOnDataReceivedListener(new BluetoothSPP.OnDataReceivedListener() {
+            @Override
+            public void onDataReceived(byte[] data, String message) {
+                handleSerialData(message);
+
+            }
+        });
+
+        bluetooth.setBluetoothConnectionListener(new BluetoothSPP.BluetoothConnectionListener() {
+            @Override
+            public void onDeviceConnected(String name, String address) {
+
+                tvConnectionStatus.setText("Connected to: " + name);
+
+                bluetooth.send("IsDelta", true);
+            }
+
+            @Override
+            public void onDeviceDisconnected() {
+                tvConnectionStatus.setText("connection failed");
+            }
+
+            @Override
+            public void onDeviceConnectionFailed() {
+                tvConnectionStatus.setText("Status: not connect");
+            }
+        });
+    }
+
+    void turnOnBluetooth() {
+        if (!bluetooth.isBluetoothEnabled()) {
+            bluetooth.enable();
+        } else {
+            if (!bluetooth.isServiceAvailable()) {
+                bluetooth.setDeviceTarget(BluetoothState.DEVICE_OTHER);
+                bluetooth.setupService();
+                bluetooth.startService(BluetoothState.DEVICE_OTHER);
+            }
+        }
+
+        if (!bluetooth.isBluetoothAvailable()) {
+            tvConnectionStatus.setText("Bluetooth is not available");
+        }
+
+        if (bluetooth.getServiceState() == BluetoothState.STATE_CONNECTED) {
+            bluetooth.disconnect();
+        } else {
+            Intent intent = new Intent(getApplicationContext(), DeviceList.class);
+            startActivityForResult(intent, BluetoothState.REQUEST_CONNECT_DEVICE);
+        }
+    }
     @Override
     protected void onStart() {
         super.onStart();
@@ -136,6 +210,7 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
         etGcode = (EditText) findViewById(R.id.et_gcode);
         spinnerGcode = (Spinner) findViewById(R.id.spinner_gcode);
         btPlay = (ImageButton) findViewById(R.id.img_bt_play);
+        tbProtocolSwitch = findViewById(R.id.tb_bluetooth);
 
         if (findViewById(R.id.fragment_container) != null) {
             positionFrag = new PositionFrag();
@@ -150,6 +225,18 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
 
         tvTerminal.setMovementMethod(new ScrollingMovementMethod());
 
+        tbProtocolSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton compoundButton, boolean b) {
+                if (b) {
+                    turnOnBluetooth();
+                    isEnableBluetooth = true;
+                } else {
+                    bluetooth.stopService();
+                    isEnableBluetooth = false;
+                }
+            }
+        });
         spinnerGcode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
@@ -474,17 +561,20 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
     }
 
     void SendGcode(String gcode) {
-        if (usbService != null) {
-            if (gcode.endsWith("\n")) {
-                usbService.write(gcode.getBytes());
-                tvTerminal.append(gcode);
-            } else {
-                usbService.write((gcode + "\n").getBytes());
-                tvTerminal.append((gcode + "\n"));
+        String editedGcode;
+        if (!gcode.endsWith("\n")) {
+            editedGcode = gcode + '\n';
+        } else {
+            editedGcode = gcode;
+        }
+
+        if (!isEnableBluetooth) {
+            if (usbService != null) {
+                usbService.write(editedGcode.getBytes());
+                tvTerminal.append(editedGcode);
             }
         } else {
-            tvTerminal.append("_");
-            tvTerminal.append(gcode);
+            bluetooth.send(editedGcode, true);
         }
     }
 
@@ -534,9 +624,6 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
         }
     };
 
-    private UsbService usbService;
-    private MyHandler mHandler;
-
     private final ServiceConnection usbConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName arg0, IBinder arg1) {
@@ -557,6 +644,22 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
             tvConnectionStatus.setText(disconnect);
         }
     };
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        if (requestCode == BluetoothState.REQUEST_CONNECT_DEVICE) {
+            if (resultCode == Activity.RESULT_OK)
+                bluetooth.connect(data);
+        } else if (requestCode == BluetoothState.REQUEST_ENABLE_BT) {
+            if (resultCode == Activity.RESULT_OK) {
+                bluetooth.setupService();
+                bluetooth.startService(BluetoothState.DEVICE_ANDROID);
+            } else {
+                Toast.makeText(getApplicationContext(), "Bluetooth was not enabled.", Toast.LENGTH_SHORT).show();
+                finish();
+            }
+        }
+    }
 
     private void startService(Class<?> service, ServiceConnection serviceConnection, Bundle extras) {
         if (!UsbService.SERVICE_CONNECTED) {
@@ -595,7 +698,7 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
         public void handleMessage(Message msg) {
             switch (msg.what) {
                 case UsbService.MESSAGE_FROM_SERIAL_PORT:
-                    mActivity.get().handleSerialData(msg);
+                    mActivity.get().handleSerialData(msg.toString());
                     break;
                 case UsbService.CTS_CHANGE:
                     Toast.makeText(mActivity.get(), "CTS_CHANGE", Toast.LENGTH_LONG).show();
@@ -607,15 +710,18 @@ public class MainActivity extends FragmentActivity implements OnPositionDataPass
         }
     }
 
-    public void handleSerialData(Message _msg) {
-        String data = _msg.obj.toString();
-
-        tvTerminal.append(data);
+    public void handleSerialData(String _msg) {
+        String data = _msg;
         if (data.indexOf('k') > 0) {
             if (isPlaying) {
                 this.sendGcodeLine(rawCode);
             }
         }
+        if (data.charAt(data.length() - 1) != '\n') {
+            data += "\r\n";
+        }
+
+        tvTerminal.append(data);
     }
 
     public void sendGcodeLine(String rawCode) {

@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools"
     package="cc.imwi.deltaxsoftware">
 
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -22,6 +24,7 @@
                 android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
                 android:resource="@xml/device_filter" />
         </activity>
+        <activity android:name="app.akexorcist.bluetotohspp.library.DeviceList" />
         <service android:name=".UsbService"
             android:enabled="true">
 
